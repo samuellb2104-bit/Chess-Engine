@@ -1,4 +1,5 @@
 from move import Move
+import move
 
 # Piece types
 EMPTY = 0
@@ -352,132 +353,69 @@ class Board:
         return pseudo_legal_moves
 
     
+    #Make moves
     def make_move(self, move):
-        """Apply a move and return the information needed to undo it."""
-        coordinates = (
-            move.start_row,
-            move.start_col,
-            move.end_row,
-            move.end_col,
-        )
-        if not all(self.is_inside_board(row, col) for row, col in (
-            (move.start_row, move.start_col),
-            (move.end_row, move.end_col),
-        )):
-            raise ValueError(f"Move coordinates are outside the board: {coordinates}")
-
+        """Applies a move to the board and returns the info needed to undo it."""
         moved_piece = self.state[move.start_row][move.start_col]
-        if moved_piece == EMPTY or self.piece_color(moved_piece) != self.to_move:
-            raise ValueError("The start square must contain a piece belonging to the side to move.")
-        if move.is_castling and move.end_col not in (2, 6):
-            raise ValueError("A castling move must end on the c- or g-file.")
+        captured_piece = self.state[move.end_row][move.end_col]
 
-        if move.is_en_passant:
-            captured_row = move.end_row + (1 if self.to_move == WHITE else -1)
-            captured_col = move.end_col
-        else:
-            captured_row = move.end_row
-            captured_col = move.end_col
-
-        captured_piece = self.state[captured_row][captured_col]
         undo_info = {
             "moved_piece": moved_piece,
             "captured_piece": captured_piece,
-            "captured_square": (captured_row, captured_col),
             "castling_rights": self.castling_rights.copy(),
             "en_passant_square": self.en_passant_square,
             "halfmove_clock": self.halfmove_clock,
             "fullmove_number": self.fullmove_number,
-            "to_move": self.to_move,
         }
 
-        self.state[move.start_row][move.start_col] = EMPTY
+        # Move the piece
         self.state[move.end_row][move.end_col] = moved_piece
+        self.state[move.start_row][move.start_col] = EMPTY
 
-        if move.promotion:
-            self.state[move.end_row][move.end_col] = self.to_move * move.promotion
+        # En passant square: only right after a two-square pawn move
+        if self.piece_type(moved_piece) == PAWN and abs(move.end_row - move.start_row) == 2:
+            self.en_passant_square = ((move.start_row + move.end_row) // 2, move.start_col)
+        else:
+            self.en_passant_square = None
 
-        if move.is_castling:
-            if move.end_col == 6:
-                self.state[move.end_row][5] = self.state[move.end_row][7]
-                self.state[move.end_row][7] = EMPTY
-            elif move.end_col == 2:
-                self.state[move.end_row][3] = self.state[move.end_row][0]
-                self.state[move.end_row][0] = EMPTY
-
-        if move.is_en_passant:
-            self.state[captured_row][captured_col] = EMPTY
-
-        # K/Q are White's kingside/queenside rights; k/q are Black's.
-        if self.piece_type(moved_piece) == KING:
-            rights = ("K", "Q") if self.to_move == WHITE else ("k", "q")
-            for right in rights:
-                self.castling_rights[right] = False
-        elif self.piece_type(moved_piece) == ROOK:
-            rook_right = {
-                (7, 0): "Q",
-                (7, 7): "K",
-                (0, 0): "q",
-                (0, 7): "k",
-            }.get((move.start_row, move.start_col))
-            if rook_right:
-                self.castling_rights[rook_right] = False
-
-        if self.piece_type(captured_piece) == ROOK:
-            rook_right = {
-                (7, 0): "Q",
-                (7, 7): "K",
-                (0, 0): "q",
-                (0, 7): "k",
-            }.get((captured_row, captured_col))
-            if rook_right:
-                self.castling_rights[rook_right] = False
-
-        self.en_passant_square = None
-        if (
-            self.piece_type(moved_piece) == PAWN
-            and abs(move.end_row - move.start_row) == 2
-        ):
-            self.en_passant_square = (
-                (move.start_row + move.end_row) // 2,
-                move.start_col,
-            )
-
+        # Halfmove clock (50-move rule)
         if self.piece_type(moved_piece) == PAWN or captured_piece != EMPTY:
             self.halfmove_clock = 0
         else:
             self.halfmove_clock += 1
 
+        # Fullmove number grows after Black moves
         if self.to_move == BLACK:
             self.fullmove_number += 1
-        self.to_move *= -1
+
+        # Switch turn
+        self.to_move = -self.to_move
 
         return undo_info
 
-    def unmake_move(self, move, undo_info):
-        """Restore the board and game state saved by make_move."""
-        self.to_move = undo_info["to_move"]
 
-        if move.is_castling:
-            if move.end_col == 6:
-                self.state[move.end_row][7] = self.state[move.end_row][5]
-                self.state[move.end_row][5] = EMPTY
-            elif move.end_col == 2:
-                self.state[move.end_row][0] = self.state[move.end_row][3]
-                self.state[move.end_row][3] = EMPTY
+    def unmake_move(self,move, undo_info):
+        """Restores the board exactly as it was before the move."""
+        self.to_move = -self.to_move
 
         self.state[move.start_row][move.start_col] = undo_info["moved_piece"]
-        self.state[move.end_row][move.end_col] = EMPTY
-
-        captured_row, captured_col = undo_info["captured_square"]
-        self.state[captured_row][captured_col] = undo_info["captured_piece"]
+        self.state[move.end_row][move.end_col] = undo_info["captured_piece"]
 
         self.castling_rights = undo_info["castling_rights"]
         self.en_passant_square = undo_info["en_passant_square"]
         self.halfmove_clock = undo_info["halfmove_clock"]
         self.fullmove_number = undo_info["fullmove_number"]
 
+    
 
 if __name__ == "__main__":
     board = Board()
+    before = [row[:] for row in board.state]
+
+    move = Move(6, 4, 4, 4)  # e2e4
+    info = board.make_move(move)
     board.print_board()
+    print(board.to_move, board.en_passant_square)   # -1 (5, 4)
+
+    board.unmake_move(move, info)
+    print(board.state == before, board.to_move == WHITE)  # True True
