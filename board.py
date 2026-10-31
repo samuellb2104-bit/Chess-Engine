@@ -406,6 +406,104 @@ class Board:
         self.halfmove_clock = undo_info["halfmove_clock"]
         self.fullmove_number = undo_info["fullmove_number"]
 
+
+    #number of moves on the turn
+    def perft(self, depth):
+        """Perft function to count the number of leaf nodes at a given depth."""
+        if depth == 0:
+            return 1
+
+        moves = self.get_legal_moves()
+        total_nodes = 0
+
+        for move in moves:
+            undo_info = self.make_move(move)
+            total_nodes += self.perft(depth - 1)
+            self.unmake_move(move, undo_info)
+
+        return total_nodes
+
+    def is_square_attacked(self, row, col, by_color):
+        """Checks if a square is attacked by the given color."""
+        # Check for pawn attacks
+        pawn_direction = 1 if by_color == WHITE else -1
+        for dc in [-1, 1]:
+            r = row + pawn_direction
+            c = col + dc
+            if self.is_inside_board(r, c) and self.state[r][c] == by_color * PAWN:
+                return True
+
+        # Check for knight attacks
+        knight_moves = [
+            (2, 1), (2, -1), (-2, 1), (-2, -1),
+            (1, 2), (1, -2), (-1, 2), (-1, -2)
+        ]
+        for dr, dc in knight_moves:
+            r = row + dr
+            c = col + dc
+            if self.is_inside_board(r, c) and self.state[r][c] == by_color * KNIGHT:
+                return True
+
+        # Check for sliding piece attacks (rook/queen and bishop/queen)
+        directions = {
+            "rook": [(-1, 0), (1, 0), (0, -1), (0, 1)],
+            "bishop": [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+        }
+        for piece_type in ["rook", "bishop"]:
+            for dr, dc in directions[piece_type]:
+                r = row + dr
+                c = col + dc
+                while self.is_inside_board(r, c):
+                    target_piece = self.state[r][c]
+                    if target_piece != EMPTY:
+                        if self.piece_color(target_piece) == by_color and (
+                            self.piece_type(target_piece) == ROOK and piece_type == "rook" or
+                            self.piece_type(target_piece) == BISHOP and piece_type == "bishop" or
+                            self.piece_type(target_piece) == QUEEN
+                        ):
+                            return True
+                        break
+                    r += dr
+                    c += dc
+
+        # Check for king attacks
+        king_offsets = [
+            (-1, -1), (-1, 0), (-1, 1),
+            (0, -1),          (0, 1),
+            (1, -1), (1, 0), (1, 1) ]
+
+        for dr, dc in king_offsets:
+            r = row + dr
+            c = col + dc
+            if self.is_inside_board(r, c) and self.state[r][c] == by_color * KING:
+                return True
+            
+            return False
+
+    def find_king(self,color):
+        for row in range(8):
+            for col in range(8):
+                piece = self.state[row][col]
+                if piece == color * KING:
+                    return (row, col)
+        return None
+    
+    def get_legal_moves(self):
+
+        legal_moves = []
+        my_color = self.to_move
+
+        for move in self.get_pseudo_legal_moves():
+            info = self.make_move(move)
+            king_pos = self.find_king(my_color)
+            if king_pos is not None:
+                king_row, king_col = king_pos
+                if not self.is_square_attacked(king_row, king_col, -my_color):
+                    legal_moves.append(move)
+
+            self.unmake_move(move, info)
+        return legal_moves
+
     
 
 if __name__ == "__main__":
@@ -419,3 +517,11 @@ if __name__ == "__main__":
 
     board.unmake_move(move, info)
     print(board.state == before, board.to_move == WHITE)  # True True
+
+    print(board.is_square_attacked(5, 4, WHITE))  # → True   (e3: la atacan los peones d2 y f2)
+    print(board.is_square_attacked(5, 0, WHITE))  
+    print(board.is_square_attacked(4, 4, WHITE))
+    print(board.is_square_attacked(2, 4, BLACK)) 
+
+    result = board.perft(4)
+    print(result)  
