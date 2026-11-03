@@ -1,3 +1,5 @@
+import random
+
 from board import Board, WHITE, BLACK, EMPTY, KING, ROOK, PAWN
 from move import Move
 from evaluate import evaluate
@@ -43,7 +45,7 @@ def minimax(board, depth, alpha, beta):
 
 
 def find_best_move(board, depth):
-    best_move = None
+    best_moves = []  # Todas las jugadas que empatan con la mejor puntuación
     best_score = -float("inf") if board.to_move == WHITE else float("inf")
 
     legal_moves = board.get_legal_moves()
@@ -51,11 +53,16 @@ def find_best_move(board, depth):
         info = board.make_move(move)
         score = minimax(board, depth - 1, -float("inf"), float("inf"))
         board.unmake_move(move, info)
+
         if (board.to_move == WHITE and score > best_score) or (board.to_move == BLACK and score < best_score):
             best_score = score
-            best_move = move
+            best_moves = [move]  # Mejor puntuación nueva: descartamos las anteriores
+        elif score == best_score:
+            best_moves.append(move)  # Empata con la mejor: la guardamos como alternativa
 
-    return best_move
+    if not best_moves:
+        return None
+    return random.choice(best_moves)  # Desempate aleatorio para no elegir siempre la primera generada
 
 
 if __name__ == "__main__":

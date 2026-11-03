@@ -25,6 +25,14 @@ DIRECTIONS = {
 #promotion constants
 PROMOTION_PIECES = [QUEEN, ROOK, BISHOP, KNIGHT]
 
+# Rook corner squares (row, col) -> castling right that depends on that rook
+CORNER_RIGHTS = {
+    (7, 0): "Q",
+    (7, 7): "K",
+    (0, 0): "q",
+    (0, 7): "k",
+}
+
 class Board:
     def __init__(self):
         self.to_move = WHITE
@@ -323,9 +331,57 @@ class Board:
             if target_piece == EMPTY or self.piece_color(target_piece) != color:
                 moves.append(Move(row, col, target_row, target_col))
 
+        moves.extend(self.get_castling_moves(row, col, color))
+
         return moves
 
-    
+    def get_castling_moves(self, row, col, color):
+        """Returns the castling moves available to the king at (row, col)."""
+        home_row = 7 if color == WHITE else 0
+
+        # The king must still be on its starting square
+        if row != home_row or col != 4:
+            return []
+
+        enemy = -color
+
+        # You cannot castle while in check
+        if self.is_square_attacked(row, col, enemy):
+            return []
+
+        moves = []
+        rook = color * ROOK
+        kingside_right = "K" if color == WHITE else "k"
+        queenside_right = "Q" if color == WHITE else "q"
+
+        # Kingside (O-O): f and g empty, and the king cannot cross or land on an attacked square.
+        # We also check the rook is really there: castling_rights can be stale in custom positions.
+        if (
+            self.castling_rights[kingside_right]
+            and self.state[row][7] == rook
+            and self.state[row][5] == EMPTY
+            and self.state[row][6] == EMPTY
+            and not self.is_square_attacked(row, 5, enemy)
+            and not self.is_square_attacked(row, 6, enemy)
+        ):
+            moves.append(Move(row, 4, row, 6, is_castling=True))
+
+        # Queenside (O-O-O): b, c and d empty; only d and c must be safe
+        # (the king never goes through b, only the rook passes there)
+        if (
+            self.castling_rights[queenside_right]
+            and self.state[row][0] == rook
+            and self.state[row][1] == EMPTY
+            and self.state[row][2] == EMPTY
+            and self.state[row][3] == EMPTY
+            and not self.is_square_attacked(row, 3, enemy)
+            and not self.is_square_attacked(row, 2, enemy)
+        ):
+            moves.append(Move(row, 4, row, 2, is_castling=True))
+
+        return moves
+
+
 
     def get_pseudo_legal_moves(self):
         #create a list to store all pseudo-legal moves
@@ -391,6 +447,30 @@ class Board:
         if move.promotion:
             self.state[move.end_row][move.end_col] = self.to_move * move.promotion
 
+        # Castling: the king has already moved, now move the rook next to it
+        if move.is_castling:
+            if move.end_col == 6:  # kingside: rook h -> f
+                self.state[move.end_row][5] = self.state[move.end_row][7]
+                self.state[move.end_row][7] = EMPTY
+            else:  # queenside: rook a -> d
+                self.state[move.end_row][3] = self.state[move.end_row][0]
+                self.state[move.end_row][0] = EMPTY
+
+        # Castling rights: lost when the king moves...
+        if self.piece_type(moved_piece) == KING:
+            if self.to_move == WHITE:
+                self.castling_rights["K"] = False
+                self.castling_rights["Q"] = False
+            else:
+                self.castling_rights["k"] = False
+                self.castling_rights["q"] = False
+
+        # ...and when a rook leaves its corner or is captured on it
+        # (checking start AND end square covers both cases)
+        for square in [(move.start_row, move.start_col), (move.end_row, move.end_col)]:
+            if square in CORNER_RIGHTS:
+                self.castling_rights[CORNER_RIGHTS[square]] = False
+
         # En passant square: only right after a two-square pawn move
         if self.piece_type(moved_piece) == PAWN and abs(move.end_row - move.start_row) == 2:
             self.en_passant_square = ((move.start_row + move.end_row) // 2, move.start_col)
@@ -419,6 +499,15 @@ class Board:
 
         self.state[move.start_row][move.start_col] = undo_info["moved_piece"]
         self.state[move.end_row][move.end_col] = undo_info["captured_piece"]
+
+        # Put the rook back where it was
+        if move.is_castling:
+            if move.end_col == 6:  # kingside: rook f -> h
+                self.state[move.end_row][7] = self.state[move.end_row][5]
+                self.state[move.end_row][5] = EMPTY
+            else:  # queenside: rook d -> a
+                self.state[move.end_row][0] = self.state[move.end_row][3]
+                self.state[move.end_row][3] = EMPTY
 
         self.castling_rights = undo_info["castling_rights"]
         self.en_passant_square = undo_info["en_passant_square"]
@@ -546,10 +635,50 @@ class Board:
     
 
 if __name__ == "__main__":
-    board = Board()
-    board.state = [[EMPTY for _ in range(8)] for _ in range(8)]
-    board.state[1][0] = WHITE * PAWN     # a7
-    board.state[7][4] = WHITE * KING     # e1
-    board.state[2][7] = BLACK * KING     # h6
-    board.to_move = WHITE
-    print(find_best_move(board, 2))  
+    def load_position(placement, to_move=WHITE, rights="KQkq"):
+        """Builds a board from the piece-placement part of a FEN string."""
+        letters = {"p": PAWN, "n": KNIGHT, "b": BISHOP, "r": ROOK, "q": QUEEN, "k": KING}
+        b = Board()
+        b.state = []
+        for rank in placement.split("/"):
+            row = []
+            for ch in rank:
+                if ch.isdigit():
+                    row += [EMPTY] * int(ch)
+                else:
+                    row.append((WHITE if ch.isupper() else BLACK) * letters[ch.lower()])
+            b.state.append(row)
+        b.to_move = to_move
+        b.castling_rights = {right: (right in rights) for right in "KQkq"}
+        return b
+
+    def castles(b):
+        return sorted(str(m) for m in b.get_legal_moves() if m.is_castling)
+
+    # Posicion "Kiwipete": ambos bandos pueden enrocar a los dos lados
+    kiwipete = load_position("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R")
+    print(len(kiwipete.get_legal_moves()))   # 48
+    print(castles(kiwipete))                 # ['e1c1', 'e1g1']
+    print(kiwipete.perft(2))                 # 2038  (oficial 2039; falta 1 por la captura al paso, aun sin implementar)
+
+    # Aplicar y deshacer el enroque corto deja todo exacto
+    move = [m for m in kiwipete.get_legal_moves() if str(m) == "e1g1"][0]
+    info = kiwipete.make_move(move)
+    print(kiwipete.state[7][5], kiwipete.state[7][6])   # 4 6   (torre en f1, rey en g1)
+    print(kiwipete.castling_rights)          # {'K': False, 'Q': False, 'k': True, 'q': True}
+    kiwipete.unmake_move(move, info)
+    print(kiwipete.state[7][4], kiwipete.state[7][7])   # 6 4   (rey en e1, torre en h1)
+    print(kiwipete.castling_rights)          # {'K': True, 'Q': True, 'k': True, 'q': True}
+
+    # No se puede enrocar estando en jaque
+    print(castles(load_position("4r1k1/8/8/8/8/8/8/R3K2R")))    # []
+    # No se puede pasar por una casilla atacada (f1 atacada: solo queda el enroque largo)
+    print(castles(load_position("5rk1/8/8/8/8/8/8/R3K2R")))     # ['e1c1']
+    # Que b1 este atacada no impide el enroque largo (el rey no pasa por b1)
+    print(castles(load_position("1r4k1/8/8/8/8/8/8/R3K2R")))    # ['e1c1', 'e1g1']
+    # Si capturan la torre de a8, las negras pierden el derecho "q"
+    board = load_position("r3k2r/8/8/8/8/8/8/R3K2R")
+    board.make_move([m for m in board.get_legal_moves() if str(m) == "a1a8"][0])
+    print(board.castling_rights)             # {'K': True, 'Q': False, 'k': True, 'q': False}
+
+    print([Board().perft(d) for d in (1, 2, 3, 4)])   # [20, 400, 8902, 197281]
