@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ajedrez</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="start-screen">
+    <h1>Ajedrez</h1>
+    <p>Elige dificultad:</p>
+    <button data-difficulty="easy">Fácil</button>
+    <button data-difficulty="medium">Medio</button>
+    <button data-difficulty="hard">Difícil</button>
+  </div>
+
+  <div id="game-screen" hidden>
+    <div id="status"></div>
+    <div id="board"></div>
+    <button id="new-game">Nueva partida</button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
