@@ -478,7 +478,7 @@ class Board:
             if self.is_inside_board(r, c) and self.state[r][c] == by_color * KING:
                 return True
             
-            return False
+        return False
 
     def find_king(self,color):
         for row in range(8):
@@ -504,24 +504,64 @@ class Board:
             self.unmake_move(move, info)
         return legal_moves
 
+    def is_in_check(self,color):
+        king_pos = self.find_king(color)
+        if king_pos is None:
+            return False
+
+        king_row, king_col = king_pos
+        return self.is_square_attacked(king_row, king_col, -color)
+    
+    def get_game_state(self):
+        if self.is_in_check(self.to_move):
+            if not self.get_legal_moves():
+                return "checkmate"
+            else:
+                return "check"
+        else:
+            if not self.get_legal_moves():
+                return "stalemate"
+            else:
+                return "ongoing"
+
     
 
 if __name__ == "__main__":
+    # ---------- PRUEBA 1: Fool's mate (mate en 2) ----------
     board = Board()
-    before = [row[:] for row in board.state]
 
-    move = Move(6, 4, 4, 4)  # e2e4
-    info = board.make_move(move)
+    board.make_move(Move(6, 5, 5, 5))  # f2f3
+    board.make_move(Move(1, 4, 3, 4))  # e7e5
+    board.make_move(Move(6, 6, 4, 6))  # g2g4
+
+    print(board.get_game_state())       # ongoing
+    print(board.is_in_check(WHITE))     # False
+
+    board.make_move(Move(0, 3, 4, 7))  # d8h4 (dama negra da jaque mate)
+
+    board.print_board()                 # dama negra (-5) en h4: fila 4, columna 7
+    print(board.to_move)                # 1   (le toca a blancas)
+    print(board.is_in_check(WHITE))     # True
+    print(board.get_legal_moves())      # []
+    print(board.get_game_state())       # checkmate
+
+    # ---------- PRUEBA 2: Ahogado ----------
+    board = Board()
+    board.state = [[EMPTY for _ in range(8)] for _ in range(8)]
+
+    board.state[0][0] = BLACK * KING    # rey negro en a8
+    board.state[2][1] = WHITE * KING    # rey blanco en b6
+    board.state[1][2] = WHITE * QUEEN   # dama blanca en c7
+    board.to_move = BLACK
+
     board.print_board()
-    print(board.to_move, board.en_passant_square)   # -1 (5, 4)
+    print(board.is_in_check(BLACK))     # False
+    print(board.get_legal_moves())      # []
+    print(board.get_game_state())       # stalemate
 
-    board.unmake_move(move, info)
-    print(board.state == before, board.to_move == WHITE)  # True True
+    # ---------- PRUEBA 3: Posición inicial ----------
+    board = Board()
 
-    print(board.is_square_attacked(5, 4, WHITE))  # → True   (e3: la atacan los peones d2 y f2)
-    print(board.is_square_attacked(5, 0, WHITE))  
-    print(board.is_square_attacked(4, 4, WHITE))
-    print(board.is_square_attacked(2, 4, BLACK)) 
-
-    result = board.perft(4)
-    print(result)  
+    print(board.is_in_check(WHITE))     # False
+    print(len(board.get_legal_moves())) # 20
+    print(board.get_game_state())       # ongoing
