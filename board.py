@@ -552,3 +552,4 @@ if __name__ == "__main__":
     board.state[7][4] = WHITE * KING     # e1
     board.state[2][7] = BLACK * KING     # h6
     board.to_move = WHITE
+    print(find_best_move(board, 2))  
