@@ -1,3 +1,5 @@
+PROMOTION_LETTER = {5: "q", 4: "r", 3: "b", 2: "n"}
+
 class Move:
     def __init__(
         self,
@@ -24,8 +26,13 @@ class Move:
         start_square = f"{files[self.start_col]}{8 - self.start_row}"
         end_square = f"{files[self.end_col]}{8 - self.end_row}"
 
-        return start_square + end_square
+        text = start_square + end_square 
 
+        if self.promotion:
+            text += PROMOTION_LETTER[self.promotion]
+
+        return text
+        
     def __repr__(self):
         return str(self)
 

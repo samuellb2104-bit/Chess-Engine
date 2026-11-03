@@ -59,30 +59,10 @@ def find_best_move(board, depth):
 
 
 if __name__ == "__main__":
-    # ---------- PRUEBA 1: mate en 1 de blancas ----------
     board = Board()
     board.state = [[EMPTY for _ in range(8)] for _ in range(8)]
-    board.state[0][6] = BLACK * KING     # g8
-    board.state[1][5] = BLACK * PAWN     # f7
-    board.state[1][6] = BLACK * PAWN     # g7
-    board.state[1][7] = BLACK * PAWN     # h7
-    board.state[7][6] = WHITE * KING     # g1
-    board.state[7][0] = WHITE * ROOK     # a1
+    board.state[1][0] = WHITE * PAWN     # a7
+    board.state[7][4] = WHITE * KING     # e1
+    board.state[2][7] = BLACK * KING     # h6
     board.to_move = WHITE
-    print(find_best_move(board, 1))      # a1a8  (jaque mate)
-
-    # ---------- PRUEBA 2: mate en 1 de negras ----------
-    board = Board()
-    board.state = [[EMPTY for _ in range(8)] for _ in range(8)]
-    board.state[7][6] = WHITE * KING     # g1
-    board.state[6][5] = WHITE * PAWN     # f2
-    board.state[6][6] = WHITE * PAWN     # g2
-    board.state[6][7] = WHITE * PAWN     # h2
-    board.state[0][6] = BLACK * KING     # g8
-    board.state[0][0] = BLACK * ROOK     # a8
-    board.to_move = BLACK
-    print(find_best_move(board, 1))      # a8a1  (jaque mate)
-
-    # ---------- PRUEBA 3: posición inicial ----------
-    board = Board()
-    print(find_best_move(board, 3))      # alguna jugada (solo cuenta material)
+    print(find_best_move(board, 2))  

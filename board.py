@@ -22,6 +22,9 @@ DIRECTIONS = {
     "rook" : [(-1, 0), (1, 0), (0, -1), (0, 1)],
     "queen" : [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, +1), (+1, -1), (+1, +1)]}
 
+#promotion constants
+PROMOTION_PIECES = [QUEEN, ROOK, BISHOP, KNIGHT]
+
 class Board:
     def __init__(self):
         self.to_move = WHITE
@@ -86,6 +89,18 @@ class Board:
 
     # PAWN MOVES
 
+    def add_pawn_moves(self, moves, row, col, to_row, to_col):
+        """Adds a pawn move, or the four promotion moves if it reaches the last rank"""
+        piece = self.state[row][col]
+        promotion_row = 0 if self.piece_color(piece) == WHITE else 7
+
+        if to_row == promotion_row:
+            for promotion_piece in PROMOTION_PIECES:
+                moves.append(Move(row, col, to_row, to_col, promotion=promotion_piece))
+        else:
+            moves.append(Move(row, col, to_row, to_col))
+
+
     def get_pawn_moves(self, row, col):
         """Returns all pseudo-legal moves for a pawn."""
         if not self.is_inside_board(row, col):
@@ -113,7 +128,7 @@ class Board:
             self.is_inside_board(next_row, col)
             and self.state[next_row][col] == EMPTY
         ):
-            moves.append(Move(row, col, next_row, col))
+            self.add_pawn_moves(moves, row, col, next_row, col)
 
             # Two-square forward move from its initial row
             double_next_row = row + 2 * direction
@@ -123,14 +138,14 @@ class Board:
                 and self.is_inside_board(double_next_row, col)
                 and self.state[double_next_row][col] == EMPTY
             ):
-                moves.append(Move(row, col, double_next_row, col))
+                self.add_pawn_moves(moves, row, col, double_next_row, col)
 
         # Diagonal captures are checked independently:
         # a blocked pawn may still capture a rival diagonally.
         moves.extend(self.pawn_capture(row, col))
 
         return moves
-    
+
 
     def get_pawn_double_move(self, row, col):
         """Return the two square pawn move if possible"""
@@ -195,7 +210,7 @@ class Board:
                 target_piece != EMPTY
                 and self.piece_color(target_piece) != color
             ):
-                capture_moves.append(Move(row, col, target_row, target_col))
+                self.add_pawn_moves(capture_moves, row, col, target_row, target_col)
 
         return capture_moves
 
@@ -372,6 +387,10 @@ class Board:
         self.state[move.end_row][move.end_col] = moved_piece
         self.state[move.start_row][move.start_col] = EMPTY
 
+        # promotion replace the pawn with the promoted piece
+        if move.promotion:
+            self.state[move.end_row][move.end_col] = self.to_move * move.promotion
+
         # En passant square: only right after a two-square pawn move
         if self.piece_type(moved_piece) == PAWN and abs(move.end_row - move.start_row) == 2:
             self.en_passant_square = ((move.start_row + move.end_row) // 2, move.start_col)
@@ -527,41 +546,9 @@ class Board:
     
 
 if __name__ == "__main__":
-    # ---------- PRUEBA 1: Fool's mate (mate en 2) ----------
-    board = Board()
-
-    board.make_move(Move(6, 5, 5, 5))  # f2f3
-    board.make_move(Move(1, 4, 3, 4))  # e7e5
-    board.make_move(Move(6, 6, 4, 6))  # g2g4
-
-    print(board.get_game_state())       # ongoing
-    print(board.is_in_check(WHITE))     # False
-
-    board.make_move(Move(0, 3, 4, 7))  # d8h4 (dama negra da jaque mate)
-
-    board.print_board()                 # dama negra (-5) en h4: fila 4, columna 7
-    print(board.to_move)                # 1   (le toca a blancas)
-    print(board.is_in_check(WHITE))     # True
-    print(board.get_legal_moves())      # []
-    print(board.get_game_state())       # checkmate
-
-    # ---------- PRUEBA 2: Ahogado ----------
     board = Board()
     board.state = [[EMPTY for _ in range(8)] for _ in range(8)]
-
-    board.state[0][0] = BLACK * KING    # rey negro en a8
-    board.state[2][1] = WHITE * KING    # rey blanco en b6
-    board.state[1][2] = WHITE * QUEEN   # dama blanca en c7
-    board.to_move = BLACK
-
-    board.print_board()
-    print(board.is_in_check(BLACK))     # False
-    print(board.get_legal_moves())      # []
-    print(board.get_game_state())       # stalemate
-
-    # ---------- PRUEBA 3: Posición inicial ----------
-    board = Board()
-
-    print(board.is_in_check(WHITE))     # False
-    print(len(board.get_legal_moves())) # 20
-    print(board.get_game_state())       # ongoing
+    board.state[1][0] = WHITE * PAWN     # a7
+    board.state[7][4] = WHITE * KING     # e1
+    board.state[2][7] = BLACK * KING     # h6
+    board.to_move = WHITE
