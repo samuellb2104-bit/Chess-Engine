@@ -4,23 +4,50 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Ajedrez</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Cormorant+Garamond:ital,wght@0,500;1,500&family=Noto+Sans+Symbols+2&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
-  <div id="start-screen">
-    <h1>Ajedrez</h1>
-    <p>Elige dificultad:</p>
-    <button data-difficulty="easy">Fácil</button>
-    <button data-difficulty="medium">Medio</button>
-    <button data-difficulty="hard">Difícil</button>
-  </div>
+<body data-theme="medium">
+  <main id="start-screen">
+    <div class="backdrop-piece" aria-hidden="true">♞︎</div>
 
-  <div id="game-screen" hidden>
-    <div id="status"></div>
-    <div id="board"></div>
-    <button id="new-game">Nueva partida</button>
-  </div>
+    <div class="menu-block">
+      <h1>Ajedrez</h1>
+      <p class="prompt">Selecciona tu dificultad</p>
 
+      <ul id="menu" role="menu">
+        <li role="menuitem" tabindex="0" data-difficulty="easy">Aprendiz <small>fácil</small></li>
+        <li role="menuitem" tabindex="0" data-difficulty="medium">Jugador <small>normal</small></li>
+        <li role="menuitem" tabindex="0" data-difficulty="hard">Maestro <small>difícil</small></li>
+      </ul>
+    </div>
+
+    <footer class="hints">
+      <span><kbd>↑</kbd><kbd>↓</kbd> Elegir</span>
+      <span><kbd>Enter</kbd> Empezar</span>
+    </footer>
+  </main>
+
+  <main id="game-screen" hidden>
+    <header class="hud">
+      <div class="player"><span class="dot white"></span>Tú</div>
+      <div id="status" aria-live="polite"></div>
+      <div class="player"><span id="bot-label">Bot</span><span class="dot black"></span></div>
+    </header>
+
+    <div id="board-wrap">
+      <div id="board3d"></div>
+    </div>
+
+    <footer class="hints">
+      <button id="new-game"><kbd>Esc</kbd> Volver al menú</button>
+    </footer>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="board3d.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

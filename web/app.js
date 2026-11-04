@@ -1,31 +1,29 @@
 const FILES = "abcdefgh";
 
-// Piezas con signo (blancas positivas) -> símbolo Unicode
-const SYMBOLS = {
-  1: "♙", 2: "♘", 3: "♗", 4: "♖", 5: "♕", 6: "♔",
-  "-1": "♟", "-2": "♞", "-3": "♝", "-4": "♜", "-5": "♛", "-6": "♚",
-};
-
 const STATUS_TEXT = {
-  ongoing: "",
+  ongoing: "Tu turno",
   check: "¡Jaque!",
   checkmate: "Jaque mate",
   stalemate: "Tablas por ahogado",
 };
 
+const LEVEL_NAME = { easy: "Aprendiz", medium: "Jugador", hard: "Maestro" };
+
 const startScreen = document.getElementById("start-screen");
 const gameScreen = document.getElementById("game-screen");
-const boardEl = document.getElementById("board");
 const statusEl = document.getElementById("status");
+const botLabel = document.getElementById("bot-label");
+const menuItems = [...document.querySelectorAll("#menu li")];
 
 let gameId = null;
 let game = null;       // último estado recibido del servidor
 let selected = null;   // casilla seleccionada, como "e2"
 let busy = false;      // true mientras esperamos al servidor (el bot piensa)
+let menuIndex = 1;     // opción del menú resaltada (empieza en "Jugador")
 
-function squareName(row, col) {
-  return FILES[col] + (8 - row);
-}
+// "e2" <-> [fila, col]
+const squareName = (row, col) => FILES[col] + (8 - row);
+const toRowCol = (sq) => [8 - Number(sq[1]), FILES.indexOf(sq[0])];
 
 async function api(url, body) {
   const options = body
@@ -37,12 +35,49 @@ async function api(url, body) {
   return data;
 }
 
+/* ---------- Menú ---------- */
+
+function setMenuIndex(index) {
+  menuIndex = (index + menuItems.length) % menuItems.length;
+  menuItems.forEach((item, i) => item.classList.toggle("active", i === menuIndex));
+  // El tema (colores del tablero y acento) cambia mientras eliges: sirve de vista previa
+  document.body.dataset.theme = menuItems[menuIndex].dataset.difficulty;
+}
+
+menuItems.forEach((item, i) => {
+  item.addEventListener("mouseenter", () => setMenuIndex(i));
+  item.addEventListener("focus", () => setMenuIndex(i));
+  item.addEventListener("click", () => newGame(item.dataset.difficulty));
+});
+
+document.addEventListener("keydown", (event) => {
+  if (!startScreen.hidden) {
+    if (event.key === "ArrowDown") { setMenuIndex(menuIndex + 1); event.preventDefault(); }
+    if (event.key === "ArrowUp") { setMenuIndex(menuIndex - 1); event.preventDefault(); }
+    if (event.key === "Enter") newGame(menuItems[menuIndex].dataset.difficulty);
+  } else if (event.key === "Escape") {
+    backToMenu();
+  }
+});
+
+function backToMenu() {
+  gameScreen.hidden = true;
+  startScreen.hidden = false;
+  setMenuIndex(menuIndex);
+}
+
+/* ---------- Partida ---------- */
+
 async function newGame(difficulty) {
   game = await api("/api/new", { difficulty });
   gameId = game.game_id;
   selected = null;
+  document.body.dataset.theme = difficulty;
+  botLabel.textContent = "Bot · " + LEVEL_NAME[difficulty];
   startScreen.hidden = true;
   gameScreen.hidden = false;
+  Board3D.setTheme();
+  Board3D.resize();
   render();
 }
 
@@ -53,31 +88,37 @@ function targetsFrom(square) {
     .map((m) => m.slice(2, 4));
 }
 
-function render() {
-  boardEl.innerHTML = "";
+function renderMarkers() {
   const targets = selected ? targetsFrom(selected) : [];
-  const last = game.last_move;
+  const last = game.last_move ? [game.last_move.slice(0, 2), game.last_move.slice(2, 4)] : [];
 
-  for (let row = 0; row < 8; row++) {
-    for (let col = 0; col < 8; col++) {
-      const name = squareName(row, col);
-      const square = document.createElement("div");
-      square.className = "square " + ((row + col) % 2 === 0 ? "light" : "dark");
-      if (last && (name === last.slice(0, 2) || name === last.slice(2, 4))) square.classList.add("last-move");
-      if (name === selected) square.classList.add("selected");
-      if (targets.includes(name)) square.classList.add("target");
-      square.textContent = SYMBOLS[game.board[row][col]] || "";
-      square.addEventListener("click", () => onSquareClick(row, col));
-      boardEl.appendChild(square);
-    }
-  }
+  // Un destino con pieza rival es una captura: se dibuja con anillo en vez de punto
+  const isCapture = (sq) => {
+    const [row, col] = toRowCol(sq);
+    return game.board[row][col] !== 0;
+  };
 
-  if (busy) statusEl.textContent = "El bot piensa...";
-  else statusEl.textContent = game.game_over ? STATUS_TEXT[game.state] : (STATUS_TEXT[game.state] || "Tu turno");
+  Board3D.setMarkers({
+    selected: selected ? toRowCol(selected) : null,
+    last: last.map(toRowCol),
+    targets: targets.filter((sq) => !isCapture(sq)).map(toRowCol),
+    captures: targets.filter(isCapture).map(toRowCol),
+  });
+}
+
+function renderStatus(text) {
+  statusEl.textContent = text ?? STATUS_TEXT[game.state];
+}
+
+// Redibuja todo desde el estado del servidor
+function render() {
+  Board3D.setPosition(game.board);
+  renderMarkers();
+  renderStatus();
 }
 
 async function onSquareClick(row, col) {
-  if (busy || game.game_over) return;
+  if (!game || busy || game.game_over) return;
   const name = squareName(row, col);
   const piece = game.board[row][col];
 
@@ -93,29 +134,39 @@ async function onSquareClick(row, col) {
   } else {
     selected = null;
   }
-  render();
+  renderMarkers();
 }
+
+const MIN_THINK_MS = 450; // pausa mínima antes de que el bot mueva, para que se note el cambio de turno
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function playMove(from, to) {
-  // El servidor usa [fila, col]
-  const toCoords = (sq) => [8 - Number(sq[1]), FILES.indexOf(sq[0])];
+  const previous = game;
   busy = true;
   selected = null;
-  render();
+  Board3D.setMarkers({});
+  renderStatus("");
+
+  // La petición sale ya; mientras tanto se anima tu jugada sin esperar al servidor
+  const request = api("/api/move", { game_id: gameId, from: toRowCol(from), to: toRowCol(to) });
+  request.catch(() => {}); // el error se gestiona más abajo; esto evita avisos mientras animamos
+
   try {
-    game = await api("/api/move", { game_id: gameId, from: toCoords(from), to: toCoords(to) });
+    await Board3D.animateMove(from + to);
+    renderStatus("El bot piensa…");
+    const [response] = await Promise.all([request, sleep(MIN_THINK_MS)]);
+    game = response;
+    if (game.bot_move) await Board3D.animateMove(game.bot_move);
   } catch (err) {
     alert(err.message);
+    game = previous; // vuelve a la posición anterior
   }
+
   busy = false;
-  render();
+  render(); // sincroniza con el estado real del servidor
 }
 
-document.querySelectorAll("[data-difficulty]").forEach((button) => {
-  button.addEventListener("click", () => newGame(button.dataset.difficulty));
-});
+document.getElementById("new-game").addEventListener("click", backToMenu);
 
-document.getElementById("new-game").addEventListener("click", () => {
-  gameScreen.hidden = true;
-  startScreen.hidden = false;
-});
+Board3D.init(document.getElementById("board3d"), onSquareClick);
+setMenuIndex(menuIndex);
