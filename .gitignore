@@ -1,2 +1,9 @@
 #python
 __pycache__/
+
+#imagenes con psibles derechos de autor
+references/
+
+#contexto de claude
+CLAUDE.md
+context.md
