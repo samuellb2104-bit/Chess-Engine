@@ -1,3 +1,4 @@
+import time
 import uuid
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -10,6 +11,20 @@ app = Flask(__name__, static_folder="web", static_url_path="")
 # game_id -> Game (una partida por jugador, en memoria)
 games = {}
 
+# Sin esto el diccionario crecería para siempre en el servidor
+GAME_TTL_SECONDS = 2 * 60 * 60  # una partida sin actividad durante 2 horas se borra
+MAX_GAMES = 500                 # tope de partidas a la vez
+
+
+def purge_games():
+    now = time.time()
+    for game_id in [gid for gid, g in games.items() if now - g.last_used > GAME_TTL_SECONDS]:
+        del games[game_id]
+    # Si aun así se llena, se descartan las menos usadas
+    while len(games) >= MAX_GAMES:
+        oldest = min(games, key=lambda gid: games[gid].last_used)
+        del games[oldest]
+
 
 def error(message, status=400):
     return jsonify({"error": message}), status
@@ -19,7 +34,10 @@ def get_game():
     data = request.get_json(silent=True) or {}
     # El id viene en el cuerpo (POST) o en la URL (GET)
     game_id = data.get("game_id") or request.args.get("game_id")
-    return game_id, games.get(game_id)
+    game = games.get(game_id)
+    if game is not None:
+        game.last_used = time.time()
+    return game_id, game
 
 
 def serialize(game_id, game, human_move=None, bot_move=None):
@@ -53,8 +71,10 @@ def new_game():
     difficulty = data.get("difficulty", "medium")
     if difficulty not in DIFFICULTY_DEPTH:
         return error("Dificultad inválida")
+    purge_games()
     game_id = uuid.uuid4().hex
     games[game_id] = Game(difficulty)
+    games[game_id].last_used = time.time()
     return jsonify(serialize(game_id, games[game_id]))
 
 
