@@ -168,5 +168,14 @@ async function playMove(from, to) {
 
 document.getElementById("new-game").addEventListener("click", backToMenu);
 
-Board3D.init(document.getElementById("board3d"), onSquareClick);
+// El tablero 3D da dos candidatos por toque: la pieza tocada y la casilla del suelo bajo el dedo.
+// Una pieza alta tapa visualmente la casilla de detrás, así que con una pieza seleccionada
+// se prefiere el candidato que sea un destino legal.
+function onBoardTap({ piece, plane }) {
+  const isTarget = (sq) => sq && selected && targetsFrom(selected).includes(squareName(sq[0], sq[1]));
+  const pick = isTarget(piece) ? piece : isTarget(plane) ? plane : piece || plane;
+  if (pick) onSquareClick(pick[0], pick[1]);
+}
+
+Board3D.init(document.getElementById("board3d"), onBoardTap);
 setMenuIndex(menuIndex);

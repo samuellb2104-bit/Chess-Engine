@@ -218,7 +218,17 @@ h1 {
 #board-wrap {
   width: min(96vw, 1000px);
   height: min(calc(100vh - 150px), 64vw);
+  height: min(calc(100dvh - 150px), 64vw); /* dvh: descuenta la barra del navegador en el móvil */
   min-height: 300px;
+}
+
+/* Móvil en vertical: el tablero ocupa todo el ancho y mucha más altura */
+@media (max-aspect-ratio: 1/1) {
+  #board-wrap {
+    width: 100vw;
+    height: min(calc(100vh - 150px), 112vw);
+    height: min(calc(100dvh - 150px), 112vw);
+  }
 }
 
 #board3d,
@@ -228,7 +238,10 @@ h1 {
   height: 100%;
 }
 
-#board3d canvas { cursor: pointer; }
+#board3d canvas {
+  cursor: pointer;
+  touch-action: manipulation; /* evita el zoom por doble toque sobre el tablero */
+}
 
 /* ---------- Móvil ---------- */
 @media (max-width: 600px) {

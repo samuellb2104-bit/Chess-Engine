@@ -8,8 +8,8 @@ const Board3D = (() => {
   let lightMat, darkMat, frameMat;
   let whiteWood, blackWood;
   let renderQueued = false;
-  const squareMeshes = [];
   const geoCache = {};
+  const boardPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // el plano y = 0 donde se apoyan las piezas
 
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
@@ -169,9 +169,7 @@ const Board3D = (() => {
         const mesh = new THREE.Mesh(squareGeo, (row + col) % 2 === 0 ? lightMat : darkMat);
         mesh.position.set(col - 3.5, -0.05, row - 3.5);
         mesh.receiveShadow = true;
-        mesh.userData = { row, col };
         scene.add(mesh);
-        squareMeshes.push(mesh);
       }
     }
 
@@ -245,9 +243,13 @@ const Board3D = (() => {
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
 
+    // Cuanto más alta la cámara, menos tapan las piezas a las casillas de detrás
+    // y menos se encogen las filas lejanas (más importante en el móvil, en vertical)
+    const portrait = camera.aspect < 1.1;
+    const elevation = ((portrait ? 64 : 54) * Math.PI) / 180;
+
     // Distancia a la que cabe todo el tablero, también en pantallas estrechas
-    const distance = Math.max(15.5, 18.5 / camera.aspect);
-    const elevation = (46 * Math.PI) / 180;
+    const distance = Math.max(16.5, 18.5 / camera.aspect);
     camera.position.set(0, Math.sin(elevation) * distance, 0.3 + Math.cos(elevation) * distance);
     camera.lookAt(0, 0, 0.3);
     camera.updateProjectionMatrix();
@@ -283,15 +285,27 @@ const Board3D = (() => {
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(pointer, camera);
-      const hits = raycaster.intersectObjects([...squareMeshes, piecesGroup], true);
-      for (const hit of hits) {
-        let node = hit.object;
-        while (node && node.userData.row === undefined) node = node.parent;
-        if (node) {
-          onSquare(node.userData.row, node.userData.col);
-          return;
-        }
+
+      // Dos candidatos, y decide quien llama (app.js), que sabe qué casillas son destinos:
+      // - plane: la casilla del tablero bajo el dedo, ignorando las piezas (atraviesa las piezas altas)
+      // - piece: la casilla de la pieza que se toca, incluida su parte alta
+      let plane = null;
+      const point = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(boardPlane, point)) {
+        const row = Math.floor(point.z + 4);
+        const col = Math.floor(point.x + 4);
+        if (row >= 0 && row < 8 && col >= 0 && col < 8) plane = [row, col];
       }
+
+      let piece = null;
+      const hits = raycaster.intersectObject(piecesGroup, true);
+      if (hits.length) {
+        let node = hits[0].object;
+        while (node && node.userData.row === undefined) node = node.parent;
+        if (node) piece = [node.userData.row, node.userData.col];
+      }
+
+      onSquare({ piece, plane });
     });
 
     new ResizeObserver(resize).observe(container);
@@ -408,12 +422,20 @@ const Board3D = (() => {
   function setMarkers({ selected = null, last = [], targets = [], captures = [] }) {
     markersGroup.clear();
 
-    const flat = (geometry, color, opacity, [row, col], y) => {
+    // onTop: se dibuja encima de las piezas, para que un destino tapado por una pieza alta siga visible
+    const flat = (geometry, color, opacity, [row, col], y, onTop = false) => {
       const mesh = new THREE.Mesh(
         geometry,
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(color).convertSRGBToLinear(), transparent: true, opacity, depthWrite: false })
+        new THREE.MeshBasicMaterial({
+          color: new THREE.Color(color).convertSRGBToLinear(),
+          transparent: true,
+          opacity,
+          depthWrite: false,
+          depthTest: !onTop,
+        })
       );
       mesh.position.set(col - 3.5, y, row - 3.5);
+      if (onTop) mesh.renderOrder = 10;
       markersGroup.add(mesh);
     };
 
@@ -423,8 +445,8 @@ const Board3D = (() => {
 
     last.forEach((sq) => flat(plane, 0xffe050, 0.35, sq, 0.012));
     if (selected) flat(plane, 0xffe050, 0.65, selected, 0.014);
-    targets.forEach((sq) => flat(dot, 0x111111, 0.3, sq, 0.016));
-    captures.forEach((sq) => flat(ring, 0x111111, 0.35, sq, 0.016));
+    targets.forEach((sq) => flat(dot, 0x111111, 0.45, sq, 0.016, true));
+    captures.forEach((sq) => flat(ring, 0x111111, 0.5, sq, 0.016, true));
     requestRender();
   }
 
