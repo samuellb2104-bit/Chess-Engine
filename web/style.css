@@ -240,7 +240,7 @@ h1 {
 
 #board3d canvas {
   cursor: pointer;
-  touch-action: manipulation; /* evita el zoom por doble toque sobre el tablero */
+  touch-action: none; /* los gestos sobre el tablero (girar, pellizcar) no deben desplazar ni hacer zoom a la página */
 }
 
 /* ---------- Móvil ---------- */

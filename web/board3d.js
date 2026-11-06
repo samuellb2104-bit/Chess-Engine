@@ -10,6 +10,14 @@ const Board3D = (() => {
   let renderQueued = false;
   const geoCache = {};
   const boardPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // el plano y = 0 donde se apoyan las piezas
+  const labels = []; // coordenadas a-h y 1-8 del marco; giran con la cámara para leerse siempre derechas
+
+  // Cámara movible: el usuario arrastra para girar y usa rueda o pellizco para el zoom
+  const MIN_ELEVATION = 25, MAX_ELEVATION = 85; // grados; ni bajo el tablero ni mirando justo desde arriba
+  const MIN_ZOOM = 0.55, MAX_ZOOM = 1.5;
+  const DRAG_THRESHOLD = 6; // píxeles; por debajo de esto el gesto es un toque, no un arrastre
+  const view = { azimuth: 0, elevation: 54, zoom: 1 };
+  let viewTouched = false; // si el usuario movió la vista, resize() no la pisa
 
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
@@ -195,12 +203,14 @@ const Board3D = (() => {
       label.rotation.x = -Math.PI / 2;
       label.position.set(col - 3.5, 0.09, 4.35);
       scene.add(label);
+      labels.push(label);
     });
     for (let row = 0; row < 8; row++) {
       const label = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), new THREE.MeshBasicMaterial({ map: labelTexture(String(8 - row)), transparent: true }));
       label.rotation.x = -Math.PI / 2;
       label.position.set(-4.35, 0.09, row - 3.5);
       scene.add(label);
+      labels.push(label);
     }
 
     // Suelo invisible que solo recoge las sombras sobre el fondo de la página
@@ -236,24 +246,43 @@ const Board3D = (() => {
     });
   }
 
+  const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+  // Inclinación por defecto: más alta en móvil vertical, donde las filas lejanas se encogen más
+  const defaultElevation = () => (camera.aspect < 1.1 ? 64 : 54);
+
+  function placeCamera() {
+    // Distancia a la que cabe todo el tablero, también en pantallas estrechas
+    const distance = Math.max(16.5, 18.5 / camera.aspect) * view.zoom;
+    const elevation = (view.elevation * Math.PI) / 180;
+    const horizontal = Math.cos(elevation) * distance;
+    camera.position.set(
+      Math.sin(view.azimuth) * horizontal,
+      Math.sin(elevation) * distance,
+      0.3 + Math.cos(view.azimuth) * horizontal
+    );
+    camera.lookAt(0, 0, 0.3);
+    camera.updateProjectionMatrix();
+    labels.forEach((label) => (label.rotation.z = view.azimuth));
+    requestRender();
+  }
+
   function resize() {
     const w = container.clientWidth;
     const h = container.clientHeight;
     if (!w || !h) return;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
+    if (!viewTouched) view.elevation = defaultElevation();
+    placeCamera();
+  }
 
-    // Cuanto más alta la cámara, menos tapan las piezas a las casillas de detrás
-    // y menos se encogen las filas lejanas (más importante en el móvil, en vertical)
-    const portrait = camera.aspect < 1.1;
-    const elevation = ((portrait ? 64 : 54) * Math.PI) / 180;
-
-    // Distancia a la que cabe todo el tablero, también en pantallas estrechas
-    const distance = Math.max(16.5, 18.5 / camera.aspect);
-    camera.position.set(0, Math.sin(elevation) * distance, 0.3 + Math.cos(elevation) * distance);
-    camera.lookAt(0, 0, 0.3);
-    camera.updateProjectionMatrix();
-    requestRender();
+  function resetView() {
+    view.azimuth = 0;
+    view.zoom = 1;
+    view.elevation = defaultElevation();
+    viewTouched = false;
+    placeCamera();
   }
 
   /* ---------- API pública ---------- */
@@ -280,15 +309,16 @@ const Board3D = (() => {
     markersGroup = new THREE.Group();
     scene.add(piecesGroup, markersGroup);
 
-    renderer.domElement.addEventListener("click", (event) => {
+    // Toque o clic: da dos candidatos y decide quien llama (app.js), que sabe qué casillas son destinos:
+    // - plane: la casilla del tablero bajo el dedo, ignorando las piezas (atraviesa las piezas altas)
+    // - piece: la casilla de la pieza que se toca, incluida su parte alta
+    function pick(clientX, clientY) {
       const rect = renderer.domElement.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      camera.updateMatrixWorld(); // la cámara puede haberse movido sin dibujar todavía
       raycaster.setFromCamera(pointer, camera);
 
-      // Dos candidatos, y decide quien llama (app.js), que sabe qué casillas son destinos:
-      // - plane: la casilla del tablero bajo el dedo, ignorando las piezas (atraviesa las piezas altas)
-      // - piece: la casilla de la pieza que se toca, incluida su parte alta
       let plane = null;
       const point = new THREE.Vector3();
       if (raycaster.ray.intersectPlane(boardPlane, point)) {
@@ -306,7 +336,74 @@ const Board3D = (() => {
       }
 
       onSquare({ piece, plane });
+    }
+
+    // Gestos: un dedo (o el ratón) arrastra para girar, dos dedos pellizcan para el zoom,
+    // la rueda también. Si el gesto casi no se mueve, cuenta como un toque normal.
+    const canvas = renderer.domElement;
+    const pointers = new Map(); // id del puntero -> última posición
+    let downAt = null;
+    let moved = false;
+    let pinchDistance = 0;
+    const pointerDistance = () => {
+      const [a, b] = [...pointers.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    };
+
+    canvas.addEventListener("pointerdown", (event) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      try { canvas.setPointerCapture(event.pointerId); } catch (_) { /* puntero ya inactivo */ }
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointers.size === 1) {
+        downAt = { x: event.clientX, y: event.clientY };
+        moved = false;
+      } else {
+        moved = true; // con dos dedos es un gesto, nunca un toque
+        pinchDistance = pointerDistance();
+      }
     });
+
+    canvas.addEventListener("pointermove", (event) => {
+      const p = pointers.get(event.pointerId);
+      if (!p) return;
+      const dx = event.clientX - p.x;
+      const dy = event.clientY - p.y;
+      p.x = event.clientX;
+      p.y = event.clientY;
+
+      if (pointers.size === 1) {
+        if (!moved && Math.hypot(p.x - downAt.x, p.y - downAt.y) < DRAG_THRESHOLD) return;
+        moved = true;
+        viewTouched = true;
+        view.azimuth -= dx * 0.008;
+        view.elevation = clamp(view.elevation + dy * 0.3, MIN_ELEVATION, MAX_ELEVATION);
+        placeCamera();
+      } else if (pointers.size === 2) {
+        const distance = pointerDistance();
+        if (pinchDistance) {
+          view.zoom = clamp(view.zoom * (pinchDistance / distance), MIN_ZOOM, MAX_ZOOM);
+          viewTouched = true;
+          placeCamera();
+        }
+        pinchDistance = distance;
+      }
+    });
+
+    const endPointer = (event) => {
+      const wasTap = event.type === "pointerup" && pointers.size === 1 && pointers.has(event.pointerId) && !moved;
+      pointers.delete(event.pointerId);
+      if (pointers.size < 2) pinchDistance = 0;
+      if (wasTap) pick(event.clientX, event.clientY);
+    };
+    canvas.addEventListener("pointerup", endPointer);
+    canvas.addEventListener("pointercancel", endPointer);
+
+    canvas.addEventListener("wheel", (event) => {
+      event.preventDefault(); // que la rueda haga zoom en el tablero y no desplace la página
+      view.zoom = clamp(view.zoom * (1 + event.deltaY * 0.001), MIN_ZOOM, MAX_ZOOM);
+      viewTouched = true;
+      placeCamera();
+    }, { passive: false });
 
     new ResizeObserver(resize).observe(container);
     setTheme();
@@ -450,5 +547,5 @@ const Board3D = (() => {
     requestRender();
   }
 
-  return { init, setTheme, setPosition, setMarkers, animateMove, resize };
+  return { init, setTheme, setPosition, setMarkers, animateMove, resize, resetView };
 })();

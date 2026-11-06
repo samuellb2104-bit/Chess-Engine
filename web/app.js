@@ -57,6 +57,8 @@ document.addEventListener("keydown", (event) => {
     if (event.key === "Enter") newGame(menuItems[menuIndex].dataset.difficulty);
   } else if (event.key === "Escape") {
     backToMenu();
+  } else if (event.key === "r" || event.key === "R") {
+    Board3D.resetView();
   }
 });
 
@@ -167,6 +169,7 @@ async function playMove(from, to) {
 }
 
 document.getElementById("new-game").addEventListener("click", backToMenu);
+document.getElementById("reset-view").addEventListener("click", () => Board3D.resetView());
 
 // El tablero 3D da dos candidatos por toque: la pieza tocada y la casilla del suelo bajo el dedo.
 // Una pieza alta tapa visualmente la casilla de detrás, así que con una pieza seleccionada
