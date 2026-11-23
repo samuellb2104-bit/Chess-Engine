@@ -14,8 +14,12 @@ const gameScreen = document.getElementById("game-screen");
 const statusEl = document.getElementById("status");
 const botLabel = document.getElementById("bot-label");
 const menuItems = [...document.querySelectorAll("#menu li")];
+const resultEl = document.getElementById("result");
+const resultTitleEl = document.getElementById("result-title");
+const resultMessageEl = document.getElementById("result-message");
 
 let gameId = null;
+let currentDifficulty = null; // para "Jugar de nuevo" con la misma dificultad
 let game = null;       // último estado recibido del servidor
 let selected = null;   // casilla seleccionada, como "e2"
 let busy = false;      // true mientras esperamos al servidor (el bot piensa)
@@ -73,6 +77,7 @@ function backToMenu() {
 async function newGame(difficulty) {
   game = await api("/api/new", { difficulty });
   gameId = game.game_id;
+  currentDifficulty = difficulty;
   selected = null;
   document.body.dataset.theme = difficulty;
   botLabel.textContent = "Bot · " + LEVEL_NAME[difficulty];
@@ -112,11 +117,33 @@ function renderStatus(text) {
   statusEl.textContent = text ?? STATUS_TEXT[game.state];
 }
 
+// Cartel de fin de partida. En un mate, el bando que tiene el turno es el que perdió.
+function renderResult() {
+  let title, message, outcome;
+  if (game.state === "checkmate") {
+    if (game.to_move === game.human_color) {
+      [title, message, outcome] = ["Jaque mate", "El bot te ganó. ¿Quieres intentarlo de nuevo?", "loss"];
+    } else {
+      [title, message, outcome] = ["¡Felicidades, ganaste!", "Le ganaste al bot " + LEVEL_NAME[currentDifficulty], "win"];
+    }
+  } else if (game.state === "stalemate") {
+    [title, message, outcome] = ["Tablas", "Ahogado: nadie gana. ¿Otra partida?", "draw"];
+  } else {
+    resultEl.hidden = true; // partida en curso: sin cartel
+    return;
+  }
+  resultTitleEl.textContent = title;
+  resultMessageEl.textContent = message;
+  resultEl.dataset.outcome = outcome; // el CSS colorea el título según el resultado
+  resultEl.hidden = false;
+}
+
 // Redibuja todo desde el estado del servidor
 function render() {
   Board3D.setPosition(game.board);
   renderMarkers();
   renderStatus();
+  renderResult();
 }
 
 async function onSquareClick(row, col) {
@@ -170,6 +197,8 @@ async function playMove(from, to) {
 
 document.getElementById("new-game").addEventListener("click", backToMenu);
 document.getElementById("reset-view").addEventListener("click", () => Board3D.resetView());
+document.getElementById("play-again").addEventListener("click", () => newGame(currentDifficulty));
+document.getElementById("back-to-menu").addEventListener("click", backToMenu);
 
 // El tablero 3D da dos candidatos por toque: la pieza tocada y la casilla del suelo bajo el dedo.
 // Una pieza alta tapa visualmente la casilla de detrás, así que con una pieza seleccionada

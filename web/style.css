@@ -243,6 +243,71 @@ h1 {
   touch-action: none; /* los gestos sobre el tablero (girar, pellizcar) no deben desplazar ni hacer zoom a la página */
 }
 
+/* ---------- Cartel de fin de partida ---------- */
+#result {
+  position: absolute;          /* relativo a main#game-screen */
+  inset: 0;
+  z-index: 2;                  /* por encima del tablero 3D y de la barra inferior */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 24px;
+  text-align: center;
+  background: rgba(8, 7, 6, .78);
+  animation: result-in .35s ease-out;
+}
+
+#result-title {
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: clamp(2.4rem, 8vw, 5rem);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  margin: 0;
+  color: #fff;
+}
+#result[data-outcome="win"] #result-title {
+  color: var(--accent);
+  text-shadow: 0 0 32px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+#result[data-outcome="loss"] #result-title { color: #c9584a; }
+#result[data-outcome="draw"] #result-title { color: var(--muted); }
+
+#result-message {
+  font-size: clamp(1.1rem, 3vw, 1.5rem);
+  font-style: italic;
+  margin: 0 0 .8rem;
+}
+
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: center;
+}
+
+.result-actions button {
+  font-family: var(--font-title);
+  font-size: .85rem;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  padding: .8em 1.6em;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--muted);
+  cursor: pointer;
+  transition: border-color .2s, color .2s;
+}
+.result-actions button:hover { border-color: var(--accent); color: #fff; }
+.result-actions #play-again { border-color: var(--accent); }
+
+@keyframes result-in {
+  from { opacity: 0; transform: scale(1.04); }
+  to   { opacity: 1; transform: none; }
+}
+
 /* ---------- Móvil ---------- */
 @media (max-width: 600px) {
   .menu-block { padding-left: 24px; }
