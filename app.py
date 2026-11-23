@@ -64,6 +64,10 @@ def serialize(game_id, game, human_move=None, bot_move=None):
 def index():
     return send_from_directory("web", "index.html")
 
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
+
 
 @app.route("/api/new", methods=["POST"])
 def new_game():
