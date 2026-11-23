@@ -219,6 +219,9 @@ class Board:
                 and self.piece_color(target_piece) != color
             ):
                 self.add_pawn_moves(capture_moves, row, col, target_row, target_col)
+            # En passant: the target square is empty, the captured pawn is beside us
+            elif (target_row, target_col) == self.en_passant_square:
+                capture_moves.append(Move(row, col, target_row, target_col, is_en_passant=True))
 
         return capture_moves
 
@@ -443,6 +446,10 @@ class Board:
         self.state[move.end_row][move.end_col] = moved_piece
         self.state[move.start_row][move.start_col] = EMPTY
 
+        # En passant: remove the pawn on (start row, end col), not the one on the end square
+        if move.is_en_passant:
+            self.state[move.start_row][move.end_col] = EMPTY
+
         # promotion replace the pawn with the promoted piece
         if move.promotion:
             self.state[move.end_row][move.end_col] = self.to_move * move.promotion
@@ -499,6 +506,10 @@ class Board:
 
         self.state[move.start_row][move.start_col] = undo_info["moved_piece"]
         self.state[move.end_row][move.end_col] = undo_info["captured_piece"]
+
+        # En passant: give back the captured pawn (it belongs to the opponent of the mover)
+        if move.is_en_passant:
+            self.state[move.start_row][move.end_col] = -self.to_move * PAWN
 
         # Put the rook back where it was
         if move.is_castling:
@@ -682,3 +693,17 @@ if __name__ == "__main__":
     print(board.castling_rights)             # {'K': True, 'Q': False, 'k': True, 'q': False}
 
     print([Board().perft(d) for d in (1, 2, 3, 4)])   # [20, 400, 8902, 197281]
+
+    # Captura al paso: tras a2a4, las negras pueden capturar b4xa3
+    print(kiwipete.perft(2), kiwipete.perft(3))       # 2039 97862
+    board = load_position("4k3/8/8/8/1p6/8/P7/4K3")
+    board.make_move([m for m in board.get_legal_moves() if str(m) == "a2a4"][0])
+    ep = [m for m in board.get_legal_moves() if m.is_en_passant]
+    print([str(m) for m in ep])              # ['b4a3']
+    undo = board.make_move(ep[0])
+    print(board.state[4][0], board.state[5][0])   # 0 -1  (peón blanco de a4 capturado, peón negro en a3)
+    board.unmake_move(ep[0], undo)
+    print(board.state[4][0], board.state[4][1])   # 1 -1  (todo vuelve a su sitio)
+    # Posición 3 (muchas capturas al paso)
+    pos3 = load_position("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8", rights="")
+    print([pos3.perft(d) for d in (1, 2, 3, 4)])      # [14, 191, 2812, 43238]
